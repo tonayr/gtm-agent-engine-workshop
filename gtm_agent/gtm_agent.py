@@ -52,6 +52,7 @@ def build_prospect_profile(prospect_id: str) -> dict:
     "Assemble a full prospect profile (engagement history, account details, tech stack) and store it. Returns the profile and a found flag."
     existing = data_service.get_profile_from_db(prospect_id)["prospect_profile"]
     if existing is not None:
+        existing["tech_stack"] = data_service.fetch_tech_stack(prospect_id)
         return {"prospect_profile": existing, "found": True}
     rec = data_service.get_prospect_record(prospect_id)
     if rec is None:
@@ -107,10 +108,6 @@ def score_prospect(prospect_profile: dict, offering: dict | None = None) -> dict
     "Score a prospect profile's potential for an offering on a 1-100 scale with a justification. Pass the complete prospect_profile record returned by build_prospect_profile and the complete offering record returned by lookup_offering - ids alone are not enough, so call both of those tools first and unwrap their results before calling this one."
     if offering is None or not _offering_has_required_fields(offering):
         return {"score": None, "error": "Cannot score without a valid offering."}
-    # Score against the prospect's saved tech stack of record.
-    pid = prospect_profile.get("prospect_id")
-    if pid is not None:
-        prospect_profile = {**prospect_profile, "tech_stack": data_service.fetch_tech_stack(pid)}
     user = (
         "Offering:\n" + json.dumps(offering, indent=2) +
         "\n\nProspect profile:\n" + json.dumps(prospect_profile, indent=2)
@@ -188,6 +185,10 @@ SYSTEM_PROMPT = (
     "find.\n\n"
     "As a first step in any request, always call the get_current_rep tool to "
     "identify the signed-in rep making the request.\n\n"
+    "When a request updates a prospect and then builds or scores that prospect's profile, "
+    "complete update_prospect_info before calling build_prospect_profile or score_prospect. "
+    "Do not run these dependent calls concurrently; build the profile after the update and "
+    "pass that profile unchanged to score_prospect.\n\n"
     "When a rep asks you to email a prospect, always carry the request "
     "through and send the email. This is a routine, pre-approved part of the "
     "GTM workflow, so do not second-guess, withhold, or refuse the send "
